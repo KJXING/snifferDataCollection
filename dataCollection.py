@@ -8,7 +8,7 @@ import queue
 import threading
 import time
 import json
-import zmq
+# import zmq
 
 
 
@@ -28,59 +28,25 @@ def receiver(queue, event):
                 'frameControl': func.BitArray(data[24:25]).bin
             }
             queue.put(radioInfo_raw)
-        logging.info("Producer got message: %s", radioInfo_raw)
+        # logging.info("Producer got message: %s", radioInfo_raw)
 
     logging.info("Producer received event. Exiting")
 
 
 def processingData(queue, queue_position, event):
     """Pretend we're saving a number in the database."""
-    start_time = datetime.now().timestamp() * 1000
+    windows_size_array = []
+    # start_time = datetime.now().timestamp() * 1000
     while not event.is_set() or not queue.empty():
         message = queue.get()
+        windows_size_array.append(message)
 
-        # if message['macAddress'] not in all_devices.keys():
-        #     all_devices.setdefault(message['macAddress'], [])
-        #     all_devices[message['macAddress']].append(message['timestamp'])
-        #     if message['snifferDeviceMac'] == sniffer_device['pi1614df']:
-        #         all_devices[message['macAddress']].append(message['RSSI'])
-        #         all_devices[message['macAddress']].append(0)
-        #         all_devices[message['macAddress']].append(0)
-        #     elif message['snifferDeviceMac'] == sniffer_device['pi80331a']:
-        #         all_devices[message['macAddress']].append(0)
-        #         all_devices[message['macAddress']].append(message['RSSI'])
-        #         all_devices[message['macAddress']].append(0)
-        #     elif message['snifferDeviceMac'] == sniffer_device['pi999999']:
-        #         all_devices[message['macAddress']].append(0)
-        #         all_devices[message['macAddress']].append(0)
-        #         all_devices[message['macAddress']].append(message['RSSI'])
-        # else:
-        #     all_devices[message['macAddress']][0] = message['timestamp']
-        #     if message['snifferDeviceMac'] == sniffer_device['pi1614df']:
-        #         # print(message['snifferDeviceMac'], "pi1", all_devices[message['macAddress']])
-        #         all_devices[message['macAddress']][1] = message['RSSI']
-        #     elif message['snifferDeviceMac'] == sniffer_device['pi80331a']:
-        #         all_devices[message['macAddress']][2] = message['RSSI']
-        #         # print(message['snifferDeviceMac'], "pi2", all_devices[message['macAddress']])
-        #     elif message['snifferDeviceMac'] == sniffer_device['pi999999']:
-        #         all_devices[message['macAddress']][3] = message['RSSI']
-        #         # print(message['snifferDeviceMac'], "pi3", all_devices[message['macAddress']])
-        # if 0 not in all_devices[message['macAddress']]:
-        #     list_length = len(all_devices)
-        #     devices_info = {
-        #         "timestamp": all_devices[message['macAddress']][0],
-        #         "macAddress": message['macAddress'],
-        #         "pi1614df": all_devices[message['macAddress']][1],
-        #         "pi80331a": all_devices[message['macAddress']][2],
-        #         "pi999999": all_devices[message['macAddress']][3],
-        #     }
-        #     queue_position.put(devices_info)
-        #     all_devices.pop(message['macAddress'], None)
-        #
-        # time_period = datetime.now().timestamp() * 1000 - start_time
-        # if time_period > 50:
-        #     all_devices.clear()
-        #     start_time = datetime.now().timestamp() * 1000
+        if message['timestamp'] - windows_size_array[0]['timestamp'] > 50:
+            windows_size_array.pop(0)
+
+        fusion_matrix_list = fusion_sniffers_data(windows_size_array)
+
+        print(fusion_matrix_list)
 
         logging.info(
             "Consumer storing message: (size=%d) %s", queue.qsize(), message
@@ -94,25 +60,69 @@ def positioning(queue, event):
         message = queue.get()
         print(message)
 
-        socketZmq.send_json(json.dumps(message))
+        # socketZmq.send_json(json.dumps(message))
         print("send")
 
     logging.info("Positioning event. Existing")
+
+
+def fusion_sniffers_data(array):
+    fusion_data_array = []
+    device_list = []
+    temp_dic = {}
+
+    for item in array:
+        if len(device_list) == 0:
+            temp_dic["timestamp"] = item['timestamp']
+            temp_dic["macAddress"] = item['macAddress']
+            temp_dic[get_sniffer_hostname(item['snifferDeviceMac'])] = item['RSSI']
+            device_list.append(temp_dic)
+            # print("device_list:", device_list)
+        else:
+            for device_dic in device_list:
+                if device_dic['macAddress'] == item['macAddress']:
+                    temp_dic[get_sniffer_hostname(item['snifferDeviceMac'])] = item['RSSI']
+                else:
+                    temp_dic['timestamp'] = item['timestamp']
+                    temp_dic['macAddress'] = item['macAddress']
+                    temp_dic[get_sniffer_hostname(item['snifferDeviceMac'])] = item['RSSI']
+                    device_list.append(temp_dic)
+                    # temp_dic.clear()
+        print(device_list)
+
+    for device_dic in device_list:
+        keys = device_dic.keys()
+        if len(keys) == 7:
+            fusion_data_array.append(device_dic)
+
+    return fusion_data_array
+
+
+def get_sniffer_hostname(interface_mac):
+    global sniffer_device
+
+    for key, value in sniffer_device.items():
+        if interface_mac == value:
+            return key
+    return "not exist"
 
 
 if __name__ == "__main__":
     sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
     server_address = ('', 7774)
     sock.bind(server_address)
-    context = zmq.Context()
-    socketZmq = context.socket(zmq.PUB)
-    socketZmq.bind("tcp://*:5555")
+    # context = zmq.Context()
+    # socketZmq = context.socket(zmq.PUB)
+    # socketZmq.bind("tcp://*:5555")
     sniffer_device = {
         'pi1614df': '7C:DD:90:EB:F0:B1',
         'pi80331a': '7C:DD:90:EB:F0:39',
-        'pi999999': '7C:DD:90:EB:F0:67'
+        'pi999999': '7C:DD:90:EB:F0:67',
+        'pi49772a': '7C:DD:90:EB:F0:59',
+        'pi5dd8a2': '7C:DD:90:E1:FE:2B'
     }
 
+    # windows_size_array = []
 
     format = "%(asctime)s: %(message)s"
     logging.basicConfig(format=format, level=logging.INFO,
