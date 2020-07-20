@@ -8,7 +8,7 @@ import queue
 import threading
 import time
 import json
-# import zmq
+import zmq
 
 
 
@@ -46,11 +46,13 @@ def processingData(queue, queue_position, event):
 
         fusion_matrix_list = fusion_sniffers_data(windows_size_array)
 
-        print(fusion_matrix_list)
+        # print("fusion_matrix_list:", len(windows_size_array), len(fusion_matrix_list), fusion_matrix_list)
+        for fusion_matrix in fusion_matrix_list:
+            queue_position.put(fusion_matrix)
 
-        logging.info(
-            "Consumer storing message: (size=%d) %s", queue.qsize(), message
-        )
+        # logging.info(
+        #     "Consumer storing message: (size=%d) %s", queue.qsize(), message
+        # )
 
     logging.info("Consumer received event. Exiting")
 
@@ -60,8 +62,8 @@ def positioning(queue, event):
         message = queue.get()
         print(message)
 
-        # socketZmq.send_json(json.dumps(message))
-        print("send")
+        socketZmq.send_json(json.dumps(message))
+        # print("send")
 
     logging.info("Positioning event. Existing")
 
@@ -70,7 +72,7 @@ def fusion_sniffers_data(array):
     fusion_data_array = []
     device_list = []
     temp_dic = {}
-
+    target_devices_mac = ['84:C7:EA:29:A6:A5', 'C0:CC:F8:91:3F:43', '4C:49:E3:47:28:EA']
     for item in array:
         if len(device_list) == 0:
             temp_dic["timestamp"] = item['timestamp']
@@ -88,12 +90,13 @@ def fusion_sniffers_data(array):
                     temp_dic[get_sniffer_hostname(item['snifferDeviceMac'])] = item['RSSI']
                     device_list.append(temp_dic)
                     # temp_dic.clear()
-        print(device_list)
+        # print(device_list)
 
     for device_dic in device_list:
         keys = device_dic.keys()
         if len(keys) == 7:
-            fusion_data_array.append(device_dic)
+            if device_dic['macAddress'] in target_devices_mac:
+                fusion_data_array.append(device_dic)
 
     return fusion_data_array
 
@@ -111,9 +114,9 @@ if __name__ == "__main__":
     sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
     server_address = ('', 7774)
     sock.bind(server_address)
-    # context = zmq.Context()
-    # socketZmq = context.socket(zmq.PUB)
-    # socketZmq.bind("tcp://*:5555")
+    context = zmq.Context()
+    socketZmq = context.socket(zmq.PUB)
+    socketZmq.bind("tcp://*:5555")
     sniffer_device = {
         'pi1614df': '7C:DD:90:EB:F0:B1',
         'pi80331a': '7C:DD:90:EB:F0:39',
