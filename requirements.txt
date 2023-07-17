@@ -1,0 +1,5 @@
+bitstring==3.1.7
+importlib-resources==3.0.0
+netaddr==0.8.0
+zipp==3.1.0
+zmp==6.9
